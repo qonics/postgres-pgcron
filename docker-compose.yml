@@ -1,0 +1,76 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: qonicsinc/postgres-pgcron:17.5
+    container_name: postgres-pgcron-demo
+    environment:
+      POSTGRES_DB: analytics_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: secure_password_2024
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-scripts:/docker-entrypoint-initdb.d:ro
+      - ./logs:/var/log/postgresql
+    networks:
+      - analytics-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d analytics_db"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Optional: pgAdmin for database management
+  pgadmin:
+    image: dpage/pgadmin4:8.2
+    container_name: pgadmin-demo
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@example.com
+      PGADMIN_DEFAULT_PASSWORD: admin_password
+    ports:
+      - "8080:80"
+    networks:
+      - analytics-network
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
+  # Optional: Application example
+  app:
+    image: node:20-alpine
+    container_name: demo-app
+    working_dir: /app
+    command: >
+      sh -c "
+        echo 'Demo application connecting to PostgreSQL with pg_cron and pg_partman' &&
+        echo 'Database: postgresql://postgres:secure_password_2024@postgres:5432/analytics_db' &&
+        tail -f /dev/null
+      "
+    networks:
+      - analytics-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+networks:
+  analytics-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local
+    container_name: pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@example.com
+      PGADMIN_DEFAULT_PASSWORD: admin_password
+    ports:
+      - "8080:80"
+    depends_on:
+      - postgres
+    networks:
+      - app-network
+    restart: unless-stopped
