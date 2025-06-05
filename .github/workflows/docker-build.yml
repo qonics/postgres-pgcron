@@ -24,13 +24,13 @@ jobs:
           - variant: standard
             dockerfile: Dockerfile
             tags: |
-              ${{ env.IMAGE_NAME }}:17.5
-              ${{ env.IMAGE_NAME }}:latest
+              qonicsinc/postgres-pgcron:17.5
+              qonicsinc/postgres-pgcron:latest
           - variant: alpine
             dockerfile: Dockerfile.alpine
             tags: |
-              ${{ env.IMAGE_NAME }}:17.5-alpine
-              ${{ env.IMAGE_NAME }}:alpine
+              qonicsinc/postgres-pgcron:17.5-alpine
+              qonicsinc/postgres-pgcron:alpine
 
     steps:
     - name: Checkout repository

@@ -3,16 +3,16 @@ FROM postgres:17.5-alpine
 
 # Set environment variables
 ENV POSTGRES_DB=postgres \
-    POSTGRES_USER=postgres \
-    POSTGRES_PASSWORD=changeme
+    POSTGRES_USER=postgres
 
 # Install build dependencies and PostgreSQL extensions
 RUN set -eux; \
-    # Install build dependencies
+    # Install build dependencies with LLVM 18 (avoid version conflicts)
     apk add --no-cache --virtual .build-deps \
         build-base \
-        clang \
-        llvm \
+        clang18 \
+        llvm18 \
+        llvm18-dev \
         git \
         curl \
         tar \
@@ -23,6 +23,32 @@ RUN set -eux; \
         python3-dev \
         py3-pip \
         pkgconfig; \
+    \
+    # Fix clang and LLVM version mismatches - create symlinks for clang-19 and llvm19
+    echo "Setting up clang and LLVM symlinks..."; \
+    \
+    # Setup clang-19 symlink pointing to clang-18
+    ln -sf /usr/bin/clang-18 /usr/bin/clang-19; \
+    echo "Created symlink: clang-19 -> clang-18"; \
+    \
+    # Setup LLVM 19 directory and tools symlinks from LLVM 18
+    ln -sf /usr/lib/llvm18 /usr/lib/llvm19; \
+    echo "Created LLVM directory symlink: llvm19 -> llvm18"; \
+    \
+    # Create individual tool symlinks in llvm19/bin
+    mkdir -p /usr/lib/llvm19/bin; \
+    for tool in /usr/lib/llvm18/bin/*; do \
+        if [ -f "$tool" ]; then \
+            ln -sf "$tool" "/usr/lib/llvm19/bin/$(basename "$tool")"; \
+        fi; \
+    done; \
+    \
+    # Verify setup
+    echo "Verifying clang-19:"; \
+    clang-19 --version || echo "clang-19 setup failed"; \
+    echo "Verifying LLVM tools:"; \
+    ls -la /usr/lib/llvm19/bin/ 2>/dev/null || echo "LLVM19 tools not found"; \
+    [ -f "/usr/lib/llvm19/bin/llvm-lto" ] && echo "llvm-lto found" || echo "llvm-lto not found"; \
     \
     # Create necessary directories
     mkdir -p /usr/src/extensions; \
