@@ -1,0 +1,100 @@
+# PostgreSQL 17.5 with pg_cron and pg_partman (Alpine Linux)
+FROM postgres:17.5-alpine
+
+# Set environment variables
+ENV POSTGRES_DB=postgres \
+    POSTGRES_USER=postgres \
+    POSTGRES_PASSWORD=changeme
+
+# Install build dependencies and PostgreSQL extensions
+RUN set -eux; \
+    # Install build dependencies
+    apk add --no-cache --virtual .build-deps \
+        build-base \
+        clang \
+        llvm \
+        git \
+        curl \
+        tar \
+        postgresql-dev \
+        openssl-dev \
+        krb5-dev \
+        icu-dev \
+        python3-dev \
+        py3-pip \
+        pkgconfig; \
+    \
+    # Create necessary directories
+    mkdir -p /usr/src/extensions; \
+    cd /usr/src/extensions; \
+    \
+    # Install pg_cron
+    echo "Installing pg_cron..."; \
+    git clone --branch v1.6.4 --depth 1 https://github.com/citusdata/pg_cron.git; \
+    cd pg_cron; \
+    make && make install; \
+    cd ..; \
+    \
+    # Install pg_partman
+    echo "Installing pg_partman..."; \
+    git clone --branch v5.2.4 --depth 1 https://github.com/pgpartman/pg_partman.git; \
+    cd pg_partman; \
+    make install; \
+    cd ..; \
+    \
+    # Cleanup
+    rm -rf /usr/src/extensions; \
+    apk del .build-deps; \
+    \
+    # Keep only runtime dependencies
+    apk add --no-cache \
+        tzdata \
+        bash \
+        su-exec; \
+    \
+    # Verify installations
+    echo "Verifying extensions..."; \
+    ls -la /usr/local/share/postgresql/extension/ | grep -E "(pg_cron|partman)"; \
+    echo "Extensions installed successfully"
+
+# Copy configuration files
+COPY postgresql.conf /etc/postgresql/postgresql.conf
+COPY pg_hba.conf /etc/postgresql/pg_hba.conf
+
+# Copy custom entrypoint and scripts
+COPY docker-entrypoint.sh /usr/local/bin/
+COPY scripts/ /usr/local/bin/postgres-scripts/
+
+# Copy initialization scripts
+COPY init-scripts/ /docker-entrypoint-initdb.d/
+
+# Set executable permissions
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh && \
+    chmod +x /usr/local/bin/postgres-scripts/*.sh && \
+    find /docker-entrypoint-initdb.d -name "*.sh" -exec chmod +x {} \;
+
+# Set up proper ownership and permissions
+RUN chown -R postgres:postgres /usr/local/bin/postgres-scripts/ && \
+    chown postgres:postgres /etc/postgresql/postgresql.conf && \
+    chown postgres:postgres /etc/postgresql/pg_hba.conf
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB" || exit 1
+
+# Labels for better maintainability
+LABEL maintainer="QonicsInc" \
+      version="17.5-alpine" \
+      description="PostgreSQL 17.5 Alpine with pg_cron and pg_partman extensions" \
+      org.opencontainers.image.title="PostgreSQL with pg_cron and pg_partman (Alpine)" \
+      org.opencontainers.image.description="Lightweight PostgreSQL 17.5 with scheduling and partitioning extensions" \
+      org.opencontainers.image.version="17.5-alpine" \
+      org.opencontainers.image.authors="QonicsInc" \
+      org.opencontainers.image.source="https://github.com/qonicsinc/postgres-pgcron" \
+      org.opencontainers.image.documentation="https://github.com/qonicsinc/postgres-pgcron/blob/main/README.md"
+
+# Use custom entrypoint
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
+
+# Default command
+CMD ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
